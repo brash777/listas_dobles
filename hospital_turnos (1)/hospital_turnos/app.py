@@ -1,104 +1,72 @@
-"""
-  Servidor Flask — Sistema de Turnos Hospitalarios
-  Expone la lista doblemente enlazada como API REST
-  y sirve el frontend.
-"""
-
 from flask import Flask, jsonify, request, send_from_directory
 import os
-from lista_doble import ListaDobleHospital, Paciente
+from lista_doble import HospitalDoubleList, Patient
 
 app = Flask(__name__, static_folder="static")
+hospital = HospitalDoubleList()
 
-# Instancia global de la lista doble
-hospital = ListaDobleHospital()
-
-# Datos de ejemplo al iniciar
 _demo = [
-    ("María López",    "10010001", "medicina",    42),
-    ("Jorge Ramírez",  "10010002", "cardiologia",  67),
-    ("Valentina Cruz", "10010003", "pediatria",     6),
-    ("Ricardo Torres", "10010004", "odontologia",  30),
-    ("Elena Morales",  "10010005", "medicina",     55),
+    ("Maria Lopez",    "10010001", "medicine",    42),
+    ("Jorge Ramirez",  "10010002", "cardiology",  67),
+    ("Valentina Cruz", "10010003", "pediatrics",  6),
 ]
-for nombre, ced, esp, edad in _demo:
-    hospital.agregar_al_final(Paciente(nombre, ced, esp, edad))
 
-# ── Rutas API ────────────────────────────────────────────────
+for name, id_num, spec, age in _demo:
+    hospital.add_to_back(Patient(name, id_num, spec, age))
 
-@app.route("/api/pacientes", methods=["GET"])
-def get_pacientes():
-    return jsonify({"pacientes": hospital.recorrer_adelante(), "total": len(hospital)})
+@app.route("/api/patients", methods=["GET"])
+def get_patients():
+    return jsonify({"patients": hospital.traverse_forward(), "total": len(hospital)})
 
-
-@app.route("/api/pacientes", methods=["POST"])
-def agregar_paciente():
+@app.route("/api/patients", methods=["POST"])
+def add_patient():
     data = request.json
-    nombre      = data.get("nombre", "").strip()
-    cedula      = data.get("cedula", "").strip()
-    especialidad = data.get("especialidad", "medicina").strip()
-    edad        = int(data.get("edad", 0))
-    urgente     = data.get("urgente", False)
+    name = data.get("name", "").strip()
+    id_number = data.get("id_number", "").strip()
+    specialty = data.get("specialty", "medicine").strip()
+    age = int(data.get("age", 0))
+    urgent = data.get("urgent", False)
 
-    if not nombre or not cedula:
-        return jsonify({"error": "Nombre y cédula son obligatorios"}), 400
+    if not name or not id_number:
+        return jsonify({"error": "Name and ID are required"}), 400
 
-    if hospital.buscar_por_cedula(cedula):
-        return jsonify({"error": "Ya existe un paciente con esa cédula"}), 409
+    if hospital.find_by_id(id_number):
+        return jsonify({"error": "Patient ID already exists"}), 409
 
-    paciente = Paciente(nombre, cedula, especialidad, edad)
-    if urgente or especialidad.lower() == "urgencias":
-        hospital.agregar_al_inicio(paciente)
+    patient = Patient(name, id_number, specialty, age)
+    if urgent or specialty.lower() == "emergency":
+        hospital.add_to_front(patient)
     else:
-        hospital.agregar_al_final(paciente)
+        hospital.add_to_back(patient)
 
-    return jsonify({"mensaje": "Paciente agregado", "paciente": paciente.to_dict()}), 201
+    return jsonify({"message": "Patient added", "patient": patient.to_dict()}), 201
 
+@app.route("/api/serve", methods=["DELETE"])
+def serve_patient():
+    patient = hospital.serve_next()
+    if patient is None:
+        return jsonify({"error": "No patients in queue"}), 404
+    return jsonify({"message": "Patient served", "patient": patient.to_dict()})
 
-@app.route("/api/atender", methods=["DELETE"])
-def atender_siguiente():
-    paciente = hospital.atender_siguiente()
-    if paciente is None:
-        return jsonify({"error": "No hay pacientes en espera"}), 404
-    return jsonify({"mensaje": "Paciente atendido", "paciente": paciente.to_dict()})
-
-
-@app.route("/api/pacientes/<cedula>", methods=["DELETE"])
-def eliminar_paciente(cedula):
-    paciente = hospital.eliminar_por_cedula(cedula)
-    if paciente is None:
-        return jsonify({"error": "Paciente no encontrado"}), 404
-    return jsonify({"mensaje": "Paciente eliminado", "paciente": paciente.to_dict()})
-
-
-@app.route("/api/buscar/<cedula>", methods=["GET"])
-def buscar_paciente(cedula):
-    paciente = hospital.buscar_por_cedula(cedula)
-    if paciente is None:
-        return jsonify({"error": "Paciente no encontrado"}), 404
-    return jsonify({"paciente": paciente.to_dict()})
-
+@app.route("/api/patients/<id_number>", methods=["DELETE"])
+def delete_patient(id_number):
+    patient = hospital.remove_by_id(id_number)
+    if patient is None:
+        return jsonify({"error": "Patient not found"}), 404
+    return jsonify({"message": "Patient removed", "patient": patient.to_dict()})
 
 @app.route("/api/stats", methods=["GET"])
 def stats():
-    pacientes = hospital.recorrer_adelante()
-    conteo = {}
-    for p in pacientes:
-        esp = p["especialidad"]
-        conteo[esp] = conteo.get(esp, 0) + 1
-    return jsonify({"total": len(hospital), "por_especialidad": conteo})
-
-
-# ── Servir frontend ──────────────────────────────────────────
+    patients = hospital.traverse_forward()
+    counts = {}
+    for p in patients:
+        spec = p["specialty"]
+        counts[spec] = counts.get(spec, 0) + 1
+    return jsonify({"total": len(hospital), "by_specialty": counts})
 
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
 
-
 if __name__ == "__main__":
-    print("=" * 55)
-    print("  Hospital DoubleLink — Sistema de Turnos")
-    print("  Abre tu navegador en: http://localhost:5000")
-    print("=" * 55)
     app.run(debug=True, port=5000)
